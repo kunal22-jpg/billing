@@ -5,6 +5,7 @@ const { Client, RemoteAuth } = require('whatsapp-web.js');
 const { MongoStore } = require('wwebjs-mongo');
 const fs = require('fs');
 const { execSync } = require('child_process');
+const qrcode = require('qrcode-terminal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,7 +53,8 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
     });
 
     client.on('qr', (qr) => {
-        console.log('📱 QR received - session may have expired');
+        console.log('\n📱 SCAN THIS QR CODE WITH WHATSAPP:');
+        qrcode.generate(qr, { small: true });
     });
 
     client.on('ready', () => {
@@ -61,6 +63,10 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
 
     client.on('authenticated', () => {
         console.log('🔐 Authenticated!');
+    });
+
+    client.on('remote_session_saved', () => {
+        console.log('💾 Session saved to MongoDB!');
     });
 
     client.on('auth_failure', (msg) => {
