@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 
@@ -10,7 +9,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 let sock = null;
-let lastQR = null;
 let isConnected = false;
 
 async function connectWhatsApp() {
@@ -19,13 +17,15 @@ async function connectWhatsApp() {
     sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
+        browser: ['Pune Metro', 'Chrome', '1.0.0'],
+        connectTimeoutMs: 60000,
+        retryRequestDelayMs: 2000,
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            lastQR = qr;
             console.log('\n📱 SCAN THIS QR CODE WITH WHATSAPP:');
             qrcode.generate(qr, { small: true });
         }
