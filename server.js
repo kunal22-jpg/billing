@@ -4,7 +4,6 @@ const makeWASocket = require('@whiskeysockets/baileys').default;
 const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,19 +13,12 @@ let sock = null;
 let lastQR = null;
 let isConnected = false;
 
-// Clear old auth to force fresh QR on every restart
-if (fs.existsSync('./auth_info')) {
-    fs.rmSync('./auth_info', { recursive: true, force: true });
-    console.log('🗑️ Cleared old auth');
-}
-
 async function connectWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
 
     sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true, // Also print directly
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -57,20 +49,15 @@ async function connectWhatsApp() {
 
 connectWhatsApp().catch(err => console.error('WA init error:', err));
 
-// Show QR as text in browser
-app.get('/qr', (req, res) => {
-    if (isConnected) return res.send('✅ Already connected!');
-    if (!lastQR) return res.send('⏳ QR not ready yet. Wait 30 seconds and refresh.');
-    res.send(`<pre style="font-size:10px">Scan this QR in WhatsApp > Linked Devices:<br><br>Use Render logs to scan the QR code directly.</pre>`);
-});
-
 app.get('/send-bill', async (req, res) => {
     try {
         const { phone, amount, ticketId, from, to } = req.query;
+
         if (!phone || !amount || !from || !to)
-            return res.status(400).json({ error: 'Missing parameters' });
+            return res.status(400).json({ error: 'Missing parameters: phone, amount, from, to' });
+
         if (!isConnected)
-            return res.status(503).json({ error: 'WhatsApp not connected yet' });
+            return res.status(503).json({ error: 'WhatsApp not connected yet. Try again shortly.' });
 
         const jid = `91${phone}@s.whatsapp.net`;
         const billMessage = [
@@ -85,7 +72,8 @@ app.get('/send-bill', async (req, res) => {
         ].join('\n');
 
         await sock.sendMessage(jid, { text: billMessage });
-        res.json({ success: true, message: '✅ Bill sent!' });
+        res.json({ success: true, message: '✅ Bill sent!', to: phone });
+
     } catch (error) {
         console.error('Send error:', error);
         res.status(500).json({ error: error.message });
