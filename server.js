@@ -37,6 +37,7 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
         puppeteer: {
             headless: true,
             executablePath: '/usr/bin/google-chrome-stable',
+            protocolTimeout: 60000,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -79,16 +80,14 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
         console.error('❌ Initialize error:', err.message);
     });
 
-    // QR CODE PAGE - open this in browser to scan
     app.get('/qr', async (req, res) => {
         if (!lastQR) {
             return res.send(`
                 <html>
                 <body style="font-family:sans-serif;text-align:center;padding:50px;background:#000;color:#fff">
-                    <h2>⏳ QR Not Ready Yet</h2>
-                    <p>WhatsApp is already connected OR QR hasn't generated yet.</p>
-                    <p>Refresh this page in 10 seconds.</p>
-                    <script>setTimeout(()=>location.reload(), 5000)</script>
+                    <h2>✅ Already Connected!</h2>
+                    <p>WhatsApp is connected. No QR needed.</p>
+                    <a href="/health" style="color:cyan">Check Health</a>
                 </body>
                 </html>
             `);
@@ -101,7 +100,7 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
                 <h2>📱 Scan with WhatsApp</h2>
                 <p>Open WhatsApp → Linked Devices → Link a Device</p>
                 <img src="${qrImage}" style="width:300px;height:300px;border:10px solid white;border-radius:10px"/>
-                <p>QR expires in ~20 seconds. Page auto-refreshes.</p>
+                <p>Auto-refreshes in 15 seconds</p>
                 <script>setTimeout(()=>location.reload(), 15000)</script>
             </body>
             </html>
