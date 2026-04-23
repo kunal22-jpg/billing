@@ -4,6 +4,9 @@
   "description": "Pune Metro E-Billing Cloud Server",
   "main": "server.js",
   "type": "commonjs",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "start": "node server.js"
   },
@@ -16,7 +19,4 @@
     "whatsapp-web.js": "^1.23.0",
     "wwebjs-mongo": "^1.1.0"
   }
-},
-"engines": {
-    "node": "18.x"
 }
