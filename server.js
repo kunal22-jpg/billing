@@ -21,7 +21,6 @@ dirs.forEach(dir => {
 mongoose.connect(process.env.MONGO_URI).then(() => {
     console.log('✅ Connected to MongoDB Atlas');
 
-    // Find Chrome path
     try {
         const chromePath = execSync('which google-chrome-stable || which chromium || which chromium-browser || which google-chrome').toString().trim();
         console.log('🔍 Chrome found at:', chromePath);
@@ -40,15 +39,20 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
         }),
         puppeteer: {
             headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+            executablePath: '/usr/bin/google-chrome-stable',
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--single-process'
+                '--single-process',
+                '--no-zygote',
             ]
         }
+    });
+
+    client.on('qr', (qr) => {
+        console.log('📱 QR received - session may have expired');
     });
 
     client.on('ready', () => {
@@ -56,7 +60,7 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
     });
 
     client.on('authenticated', () => {
-        console.log('🔐 Authenticated from MongoDB session!');
+        console.log('🔐 Authenticated!');
     });
 
     client.on('auth_failure', (msg) => {
@@ -67,15 +71,17 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
         console.warn('⚠️ Disconnected:', reason);
     });
 
-    client.initialize();
+    console.log('⏳ Initializing WhatsApp client...');
+    client.initialize().catch(err => {
+        console.error('❌ Initialize error:', err.message);
+        console.error('Stack:', err.stack);
+    });
 
     app.get('/send-bill', async (req, res) => {
         try {
             const { phone, amount, ticketId, from, to } = req.query;
-
             if (!phone || !amount || !from || !to)
                 return res.status(400).json({ error: 'Missing parameters' });
-
             if (!client.info)
                 return res.status(503).json({ error: 'WhatsApp not ready yet' });
 
@@ -93,7 +99,6 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
 
             await client.sendMessage(jid, billMessage);
             res.json({ success: true, message: '✅ Bill sent!' });
-
         } catch (error) {
             console.error('Send error:', error);
             res.status(500).json({ error: error.message });
