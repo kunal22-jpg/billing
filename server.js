@@ -6,10 +6,13 @@ const { MongoStore } = require('wwebjs-mongo');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
+
+let lastQR = null;
 
 const dirs = [
     './.wwebjs_auth/wwebjs_temp_session_pune-metro-session/Default',
@@ -21,13 +24,6 @@ dirs.forEach(dir => {
 
 mongoose.connect(process.env.MONGO_URI).then(() => {
     console.log('✅ Connected to MongoDB Atlas');
-
-    try {
-        const chromePath = execSync('which google-chrome-stable || which chromium || which chromium-browser || which google-chrome').toString().trim();
-        console.log('🔍 Chrome found at:', chromePath);
-    } catch(e) {
-        console.log('❌ Chrome not found!', e.message);
-    }
 
     const store = new MongoStore({ mongoose });
 
@@ -53,11 +49,13 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
     });
 
     client.on('qr', (qr) => {
-        console.log('\n📱 SCAN THIS QR CODE WITH WHATSAPP:');
+        lastQR = qr;
+        console.log('📱 QR ready - open /qr in browser to scan!');
         qrcode.generate(qr, { small: true });
     });
 
     client.on('ready', () => {
+        lastQR = null;
         console.log('🚀 WhatsApp Client is Ready!');
     });
 
@@ -77,10 +75,37 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
         console.warn('⚠️ Disconnected:', reason);
     });
 
-    console.log('⏳ Initializing WhatsApp client...');
     client.initialize().catch(err => {
         console.error('❌ Initialize error:', err.message);
-        console.error('Stack:', err.stack);
+    });
+
+    // QR CODE PAGE - open this in browser to scan
+    app.get('/qr', async (req, res) => {
+        if (!lastQR) {
+            return res.send(`
+                <html>
+                <body style="font-family:sans-serif;text-align:center;padding:50px;background:#000;color:#fff">
+                    <h2>⏳ QR Not Ready Yet</h2>
+                    <p>WhatsApp is already connected OR QR hasn't generated yet.</p>
+                    <p>Refresh this page in 10 seconds.</p>
+                    <script>setTimeout(()=>location.reload(), 5000)</script>
+                </body>
+                </html>
+            `);
+        }
+
+        const qrImage = await QRCode.toDataURL(lastQR);
+        res.send(`
+            <html>
+            <body style="font-family:sans-serif;text-align:center;padding:50px;background:#000;color:#fff">
+                <h2>📱 Scan with WhatsApp</h2>
+                <p>Open WhatsApp → Linked Devices → Link a Device</p>
+                <img src="${qrImage}" style="width:300px;height:300px;border:10px solid white;border-radius:10px"/>
+                <p>QR expires in ~20 seconds. Page auto-refreshes.</p>
+                <script>setTimeout(()=>location.reload(), 15000)</script>
+            </body>
+            </html>
+        `);
     });
 
     app.get('/send-bill', async (req, res) => {
