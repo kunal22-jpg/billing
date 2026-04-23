@@ -1,15 +1,24 @@
 require('dotenv').config();
 const express = require('express');
-const makeWASocket  = require('@whiskeysockets/baileys').default;
+const makeWASocket = require('@whiskeysockets/baileys').default;
 const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 let sock = null;
+let lastQR = null;
+let isConnected = false;
+
+// Clear old auth to force fresh QR on every restart
+if (fs.existsSync('./auth_info')) {
+    fs.rmSync('./auth_info', { recursive: true, force: true });
+    console.log('🗑️ Cleared old auth');
+}
 
 async function connectWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
@@ -17,26 +26,28 @@ async function connectWhatsApp() {
     sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
+        printQRInTerminal: true, // Also print directly
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+            lastQR = qr;
             console.log('\n📱 SCAN THIS QR CODE WITH WHATSAPP:');
             qrcode.generate(qr, { small: true });
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('⚠️ Connection closed. Reconnecting:', shouldReconnect);
-            if (shouldReconnect) {
-                setTimeout(connectWhatsApp, 5000);
-            }
+            isConnected = false;
+            const code = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = code !== DisconnectReason.loggedOut;
+            console.log('⚠️ Disconnected. Code:', code, '| Reconnecting:', shouldReconnect);
+            if (shouldReconnect) setTimeout(connectWhatsApp, 5000);
         }
 
         if (connection === 'open') {
+            isConnected = true;
             console.log('🚀 WhatsApp Connected!');
         }
     });
@@ -44,20 +55,22 @@ async function connectWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-connectWhatsApp();
+connectWhatsApp().catch(err => console.error('WA init error:', err));
 
-// Send bill endpoint
+// Show QR as text in browser
+app.get('/qr', (req, res) => {
+    if (isConnected) return res.send('✅ Already connected!');
+    if (!lastQR) return res.send('⏳ QR not ready yet. Wait 30 seconds and refresh.');
+    res.send(`<pre style="font-size:10px">Scan this QR in WhatsApp > Linked Devices:<br><br>Use Render logs to scan the QR code directly.</pre>`);
+});
+
 app.get('/send-bill', async (req, res) => {
     try {
         const { phone, amount, ticketId, from, to } = req.query;
-
-        if (!phone || !amount || !from || !to) {
+        if (!phone || !amount || !from || !to)
             return res.status(400).json({ error: 'Missing parameters' });
-        }
-
-        if (!sock) {
-            return res.status(503).json({ error: 'WhatsApp not ready' });
-        }
+        if (!isConnected)
+            return res.status(503).json({ error: 'WhatsApp not connected yet' });
 
         const jid = `91${phone}@s.whatsapp.net`;
         const billMessage = [
@@ -73,7 +86,6 @@ app.get('/send-bill', async (req, res) => {
 
         await sock.sendMessage(jid, { text: billMessage });
         res.json({ success: true, message: '✅ Bill sent!' });
-
     } catch (error) {
         console.error('Send error:', error);
         res.status(500).json({ error: error.message });
@@ -83,8 +95,8 @@ app.get('/send-bill', async (req, res) => {
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
-        whatsapp: sock ? 'connected' : 'not ready',
-        uptime: process.uptime()
+        whatsapp: isConnected ? 'connected' : 'not ready',
+        uptime: Math.floor(process.uptime()) + 's'
     });
 });
 
