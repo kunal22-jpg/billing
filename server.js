@@ -31,14 +31,13 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
         }),
         puppeteer: {
             headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
+                '--single-process'
             ]
         }
     });
@@ -64,8 +63,12 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
     app.get('/send-bill', async (req, res) => {
         try {
             const { phone, amount, ticketId, from, to } = req.query;
+
             if (!phone || !amount || !from || !to)
                 return res.status(400).json({ error: 'Missing parameters' });
+
+            if (!client.info)
+                return res.status(503).json({ error: 'WhatsApp not ready yet' });
 
             const jid = `91${phone}@c.us`;
             const billMessage = [
@@ -81,7 +84,9 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
 
             await client.sendMessage(jid, billMessage);
             res.json({ success: true, message: '✅ Bill sent!' });
+
         } catch (error) {
+            console.error('Send error:', error);
             res.status(500).json({ error: error.message });
         }
     });
