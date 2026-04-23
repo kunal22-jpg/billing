@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const { Client, RemoteAuth } = require('whatsapp-web.js');
 const { MongoStore } = require('wwebjs-mongo');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,6 +20,14 @@ dirs.forEach(dir => {
 
 mongoose.connect(process.env.MONGO_URI).then(() => {
     console.log('✅ Connected to MongoDB Atlas');
+
+    // Find Chrome path
+    try {
+        const chromePath = execSync('which google-chrome-stable || which chromium || which chromium-browser || which google-chrome').toString().trim();
+        console.log('🔍 Chrome found at:', chromePath);
+    } catch(e) {
+        console.log('❌ Chrome not found!', e.message);
+    }
 
     const store = new MongoStore({ mongoose });
 
